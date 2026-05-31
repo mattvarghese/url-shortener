@@ -24,9 +24,13 @@ We will use this topology to build a 10 node Raspberry Pi 3B cluster, and bring 
                                         [Pi 01 - 05]                 [Pi 06 - 10]
 ```
 
+.
+
 # Goal
 
 This file walks you through building the "main" image for the Pis (ubuntu server 26.04), setting up necessary software, cloning to the other 9 Pis, and adjusting the clones, to bring up the RPi3 cluster. It then walks through setting the cluster up as a K3S cluster as well.
+
+.
 
 # "main" image
 
@@ -67,10 +71,11 @@ Insert your first 32GB uSD card into your developer workstation, open the Imager
 * Under the *Services* tab, check **Enable SSH** and select **Allow password authentication**.
 * Click **SAVE**.
 
-
 5. **Write:** Click **NEXT** and confirm the write operations. The utility will download the OS binary, format the partitions, flash the image, and run a block verification cycle.
 
 Once the verification finishes, eject the uSD card from your workstation. 
+
+.
 
 ## First Boot
 
@@ -98,6 +103,8 @@ and
 ```bash
 sudo tail -f /var/log/unattended-upgrades/unattended-upgrades-dpkg.log
 ```
+
+.
 
 ## Optimizing the "main" image
 
@@ -220,6 +227,7 @@ myupdate() {
 }
 # ==========================================================
 ```
+.
 
 ## Preparing the "main" Image for Cloning
 
@@ -272,7 +280,8 @@ sudo shutdown -h now
 
 ```
 
----
+.
+
 ## Cloning the uSD Cards
 
 Instead of copying the entire raw 32GB footprint of the master card ten separate times, we will perform a high-speed sector-limited clone. We will use a graphical partition tool to shrink our active filesystem down under a tight 5GB boundary. This allows us to use `dd` with a fixed block count, reading and writing only the first 5GB of data. This cuts out 27GB of dead space per card, drastically accelerating our deployment timeline while completely avoiding flash size variance traps.
@@ -345,7 +354,7 @@ sudo umount /mnt/pi_root
 
 *(Physically label each card `Pi 01` through `Pi 10` with a piece of tape as soon as it drops out of the burner to stay organized during hardware rack mounting!)*
 
----
+.
 
 ## Post-Clone Adjustments & Initial Boot
 
@@ -393,6 +402,271 @@ ssh ubuntu@pi-01.lan
 
 Repeat this quick sequence one by one for the remaining cards. Once all 10 cards are completed, your entire network foundation is established, fully updated, optimized, expanded, and ready for global **K3s/Ansible** automated cluster deployment orchestration!
 
+.
 
 ## Power up the cluster
 
+At this point, all 10 uSD cards are on the 10 pis. We can bring up the pis now. When we do so, we see `pi-01.lan` through `pi-10.lan` active on the router's client list. We can ssh into them with password right now. 
+
+.
+
+# Generate & Map SSH Keys for Automated Orchestration
+
+Instead of typing your password 10 separate times, your workstation uses an asymmetric SSH key pair to authenticate securely with the cluster layout. We will protect this key with a secure passphrase and manage it using a background agent. This gives you the security of encrypted storage alongside the hands-free speed needed for Ansible orchestration.
+
+## 1. Configure the SSH Agent Natively on Your Workstation
+
+To ensure you only have to unlock your key once per session, add this logic to your shell profile. This tells your environment to automatically discover or initialize a background agent process whenever you launch a terminal:
+
+```bash
+cat << 'EOF' >> ~/.bashrc
+
+# Automatically start and manage the SSH Agent session
+if [ -z "$SSH_AUTH_SOCK" ]; then
+    eval "$(ssh-agent -s)" > /dev/null
+fi
+EOF
+
+```
+
+Source the file to active it immediately in your current window:
+
+```bash
+source ~/.bashrc
+
+```
+
+## 2. Check or Generate Your High-Security SSH Key
+
+On your **Lenovo T14 terminal**, verify whether an active identity file already exists:
+
+```bash
+ls -l ~/.ssh/id_ed25519
+
+```
+
+If missing, mint a high-security, lightweight Ed25519 key pair. **When prompted, type a secure passphrase** to encrypt your private key on disk:
+
+```bash
+ssh-keygen -t ed25519 -C "dev-workstation"
+
+```
+
+## 3. Unlock Your Key for Your Current Desktop Session
+
+Add your newly created private key to your active background agent. You will type your passphrase **once** here to decrypt it into your laptop's volatile RAM:
+
+```bash
+ssh-add ~/.ssh/id_ed25519
+
+```
+
+## 4. Blast Public Keys to All 10 Nodes (The Fast Way)
+
+Execute this quick shell loop to install your laptop's **public key lock** (`~/.ssh/id_ed25519.pub`) across the entire rack array instantly. Your private key remains securely cached on your workstation and never leaves your laptop.
+
+```bash
+for i in {01..10}; do
+  echo "--- Copying public key to pi-$i.lan ---"
+  ssh-copy-id ubuntu@pi-$i.lan
+done
+
+```
+
+*Note: You will be prompted to enter the standard password for each Pi one last time during this loop to approve installing the key.*
+
+## 5. Test Hands-Free Connectivity
+
+Verify you can now stream administrative controls directly into any node instantly without being challenged for passwords or passphrases:
+
+```bash
+ssh ubuntu@pi-01.lan "hostname && uptime"
+
+```
+
+.
+
+# Install and Configure Ansible on Your Laptop
+
+Ansible is completely agentless. It doesn't require installing any heavy background software on the resource-constrained 1GB Raspberry Pis; it just logs in over standard SSH, executes tasks, and disconnects.
+
+## 1. Install Ansible Natively
+
+Run this on your **Lenovo workstation**:
+
+```bash
+sudo apt update
+sudo apt install -y ansible
+
+```
+
+## 2. Draft Your Hosts Inventory
+
+Create an inventory tracking layout file named `hosts.ini`. Then paste your complete topology configuration mapping into it:
+
+```ini
+[all:vars]
+ansible_user=ubuntu
+ansible_ssh_private_key_file=~/.ssh/id_ed25519
+
+[pis]
+pi-01.lan
+pi-02.lan
+pi-03.lan
+pi-04.lan
+pi-05.lan
+pi-06.lan
+pi-07.lan
+pi-08.lan
+pi-09.lan
+pi-10.lan
+
+[k3s_master]
+pi-01.lan
+
+[k3s_workers]
+pi-02.lan
+pi-03.lan
+pi-04.lan
+pi-05.lan
+pi-06.lan
+pi-07.lan
+pi-08.lan
+pi-09.lan
+pi-10.lan
+
+```
+
+.
+
+# Run the First Cluster-Wide Orchestration
+
+Let's run a live diagnostic check to prove your laptop controls the entire 10-node array.
+
+## 1. Test the Global Ping
+
+Execute an Ansible ad-hoc ping module test. This confirms Python is happy on the nodes and authentication handles correctly:
+
+```bash
+ansible pis -i hosts.ini -m ping
+
+```
+
+You should see a glorious wall of 10 green `"ping": "pong"` success status returns.
+
+## 2. Check Global Resource Footprints
+
+Let's see exactly how much memory your snap-purged base OS images are consuming before K3s lands:
+
+```bash
+ansible pis -i hosts.ini -m shell -a "free -h"
+
+```
+
+## 3. Create utility scripts
+
+Create scripts such as `broadcast.sh`, `shutdown.sh` etc. as utility scripts.
+
+To allow automation scripts to execute privilege elevation hands-free, we need to instruct the remote OS configuration to allow the `ubuntu` user to run `sudo` without password intervention.
+
+### Step A: Setup passwordless sudo for `ubuntu`
+
+Run this script from the command line
+
+```bash
+for i in {01..10}; do
+  echo "--- Setting up passwordless sudo on pi-$i.lan ---"
+  ssh -t ubuntu@pi-$i.lan "echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/90-ubuntu-user"
+done
+
+```
+
+### Step B: "Cloud-Init" Update
+
+If you only do the above, the next time you reboot the cluster cloud-init will wake up and completely overwrite or ignore the file we just created in Step A. To fix this, we must adjust cloud-init's core profile configuration file. 
+
+```bash
+./broadcast.sh "echo 'user: { name: ubuntu, sudo: [\"ALL=(ALL) NOPASSWD:ALL\"] }' | sudo tee /etc/cloud/cloud.cfg.d/99-custom-user.cfg"
+
+```
+
+### Step C: Test with the `shutdown.sh` script
+
+Now that the authentication barriers are entirely cleared, test the parameterized shutdown script again using the reboot command:
+
+```bash
+./shutdown.sh -r
+
+```
+
+## 4. Create `apt upgrade` Utility
+
+Earlier, we created a bash function `myupdate` in root's `.bashrc`. However, that doesn't work with `./broadcast.sh` because when we do `sudo myupdate`, our `.bashrc` is not sourced. To fix this, we will make a `myupdate.sh` script
+
+### A. Save a script on your laptop
+
+Create a local file named `myupdate.sh` in your workspace folder (`touch myupdate.sh`):
+
+```bash
+#!/usr/bin/env bash
+echo ""
+date
+echo "apt update && apt upgrade -y"
+echo ""
+apt update && apt upgrade -y
+echo ""
+date
+echo "apt clean; apt autoclean -y; apt autoremove --purge -y"
+echo ""
+apt clean; apt autoclean -y; apt autoremove --purge -y
+echo ""
+date
+echo "all done!"
+
+```
+
+### B. Copy the script to all 10 Pis using Ansible
+
+Instead of trying to inject lines into a text file or struggle with complex nesting, use Ansible's built-in ad-hoc `copy` module to safely push the executable file straight to the system binary path on every node:
+
+```bash
+ansible pis -i hosts.ini -m copy -a "src=myupdate.sh dest=/usr/local/bin/myupdate.sh mode=0755" --become
+
+```
+
+#### 3. Execute it perfectly
+
+Because `/usr/local/bin` is in the default execution `$PATH` for every user (including root), it is now a native system command. You can run it across the entire rack cleanly with a single, un-nested command string:
+
+```bash
+./broadcast.sh sudo myupdate.sh
+
+```
+We also create an `update.sh` script which does exactly this. We actually never need to run this, because there is the unattended upgrade. But it is nice to do the clean/autoclean/autoremove
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+---
+
+## What's Next? (Pre-K3s Hardening Playbook)
+
+Once your ping returns green across the board, we shouldn't manually run the K3s installers yet. The Raspberry Pi 3B has exactly 1GB of RAM, meaning a couple of minor OS optimization missteps will trigger memory leaks or cause kernel deadlocks under cluster loads.
+
+Before installing K3s, our next step should be writing a single **Ansible Playbook** to automate the following system hardening steps across all 10 nodes:
+
+1. **Enable cgroups** (Critical! K3s container engines will refuse to boot without `cgroups=memory` explicitly appended to `/boot/firmware/cmdline.txt`).
+2. **Standardize SWAP allocations** (MicroSD cards will choke if swap spaces aren't tightly capped or configured cleanly to avoid thrashing cascades).
+3. **Run `myupdate` baseline triggers** globally to verify total package parity.
+
+Should we draft that pre-K3s preparation playbook file next?

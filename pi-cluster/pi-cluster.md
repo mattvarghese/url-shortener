@@ -153,7 +153,8 @@ sudo apt update && sudo apt install -y \
   xfce4-taskmanager \
   mousepad \
   btop \
-  iotop
+  iotop \
+  lm-sensors 
 sudo usermod -aG docker $USER
 ```
 Then reboot the pi

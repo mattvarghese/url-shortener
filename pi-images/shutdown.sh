@@ -10,11 +10,12 @@ if [ ! -f "$INVENTORY" ]; then
 fi
 
 # Determine arguments to pass. Default to immediate halt if none are given.
-if [ $# -eq 0 ]; then
-    SHUTDOWN_ARGS="-h now"
-else
-    SHUTDOWN_ARGS="$@"
-fi
+# if [ $# -eq 0 ]; then
+#     SHUTDOWN_ARGS="-h now"
+# else
+#     SHUTDOWN_ARGS="$@"
+# fi
+SHUTDOWN_ARGS="$@"
 
 # Safety Confirmation Prompt
 echo "========================================================================"

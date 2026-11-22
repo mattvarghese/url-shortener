@@ -1,0 +1,37 @@
+---
+- name: Pre-K3s hardening for Pi 3B nodes
+  hosts: pis
+  become: true
+  tasks:
+    - name: Ensure cgroup tokens in /boot/firmware/cmdline.txt
+      ansible.builtin.shell: |
+        set -e
+        F=/boot/firmware/cmdline.txt
+        grep -q 'cgroup_enable=memory' "$F" || sed -i 's/$/ cgroup_enable=memory cgroup_memory=1/' "$F"
+      args:
+        executable: /bin/bash
+      register: cg
+      changed_when: cg.rc == 0
+
+    - name: Disable swap now
+      ansible.builtin.command: swapoff -a
+      changed_when: false
+      failed_when: false
+
+    - name: Remove swap entries from fstab
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: '\sswap\s'
+        state: absent
+
+    - name: Set swappiness
+      ansible.posix.sysctl:
+        name: vm.swappiness
+        value: "1"
+        state: present
+        reload: true
+
+    - name: Reboot nodes to apply cgroups
+      ansible.builtin.reboot:
+        reboot_timeout: 300
+      when: cg.changed

@@ -1,0 +1,59 @@
+---
+- name: Install K3s server on master
+  hosts: k3s_master
+  become: true
+  tasks:
+    - name: Install K3s server
+      ansible.builtin.shell: |
+        set -e
+        curl -sfL https://get.k3s.io | sh -
+      args:
+        executable: /bin/bash
+      creates: /usr/local/bin/k3s
+
+    - name: Wait for node-token
+      ansible.builtin.wait_for:
+        path: /var/lib/rancher/k3s/server/node-token
+        timeout: 120
+
+    - name: Read node token
+      ansible.builtin.slurp:
+        src: /var/lib/rancher/k3s/server/node-token
+      register: node_token_raw
+
+    - name: Expose token as fact
+      ansible.builtin.set_fact:
+        k3s_token: "{{ node_token_raw.content | b64decode | trim }}"
+        k3s_url: "https://{{ inventory_hostname }}:6443"
+
+- name: Install K3s agents on workers
+  hosts: k3s_workers
+  become: true
+  vars:
+    k3s_master_host: "{{ hostvars[groups['k3s_master'][0]]['inventory_hostname'] }}"
+    k3s_token: "{{ hostvars[groups['k3s_master'][0]]['k3s_token'] }}"
+  tasks:
+    - name: Install K3s agent
+      ansible.builtin.shell: |
+        set -e
+        curl -sfL https://get.k3s.io | K3S_URL="https://{{ k3s_master_host }}:6443" K3S_TOKEN="{{ k3s_token }}" sh -
+      args:
+        executable: /bin/bash
+      creates: /usr/local/bin/k3s
+
+- name: Fetch kubeconfig to control machine
+  hosts: k3s_master
+  become: true
+  tasks:
+    - name: Copy kubeconfig to control machine
+      ansible.builtin.fetch:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: ./k3s.yaml
+        flat: true
+    - name: Rewrite server URL in kubeconfig
+      ansible.builtin.replace:
+        path: ./k3s.yaml
+        regexp: 'https://127\.0\.0\.1:6443'
+        replace: "https://{{ inventory_hostname }}:6443"
+      delegate_to: localhost
+      become: false

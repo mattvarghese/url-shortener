@@ -24,7 +24,7 @@ for NODE in $NODES; do
     echo "Scheduling reboot on ${NODE} in +${delay} minutes..."
 
     (
-        ssh -n "ubuntu@${NODE}" "sensors; sudo shutdown -r +${delay}"
+        ssh -n "ubuntu@${NODE}" "sudo shutdown -r +${delay}"
         rc=$?
         if [ $rc -eq 0 ]; then
             echo "[OK] ${NODE}: reboot scheduled in +${delay}m"
@@ -37,7 +37,6 @@ for NODE in $NODES; do
     idx=$((idx + 1))
 done
 
-# Wait for all SSH commands to finish scheduling (takes seconds, not minutes)
 for pid in "${pids[@]}"; do
     wait "$pid"
 done

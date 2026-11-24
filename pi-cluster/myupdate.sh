@@ -1,13 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+
 echo ""
 date
-echo "apt update && apt upgrade -y"
+echo "apt-get update && apt-get upgrade -y"
 echo ""
-apt update && apt upgrade -y
+apt-get update && apt-get upgrade -y
+
 echo ""
 date
-echo "apt clean; apt autoclean -y; apt autoremove --purge -y"
+echo "apt-get clean && apt-get autoclean -y && apt-get autoremove --purge -y"
 echo ""
-apt clean; apt autoclean -y; apt autoremove --purge -y
+apt-get clean && apt-get autoclean -y && apt-get autoremove --purge -y
+
 echo ""
 date
 echo "all done!"

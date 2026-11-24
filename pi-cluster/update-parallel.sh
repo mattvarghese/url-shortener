@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 LOG_DIR="/tmp/pi-update-$(date +%Y%m%d-%H%M%S)"
+REMOTE_SCRIPT="/usr/local/bin/myupdate.sh"
 
 mkdir -p "$LOG_DIR"
 echo "Starting parallel updates across pi-01.lan through pi-10.lan. Logs: ${LOG_DIR}"
@@ -15,7 +16,8 @@ for i in {01..10}; do
     log_file="${LOG_DIR}/${NODE}.log"
 
     (
-        ssh -n "ubuntu@${NODE}" "sudo DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Progress-Fancy=0 update && sudo DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Progress-Fancy=0 upgrade -y && sudo apt-get clean && sudo apt-get autoclean -y && sudo apt-get autoremove --purge -y" \
+        # -n keeps ssh from reading stdin; DEBIAN_FRONTEND=noninteractive avoids interactive prompts
+        ssh -n "ubuntu@${NODE}" "sudo DEBIAN_FRONTEND=noninteractive ${REMOTE_SCRIPT}" \
             2>&1 | sed -u "s/^/[${NODE}] /" | tee "$log_file"
         exit "${PIPESTATUS[0]}"
     ) &
